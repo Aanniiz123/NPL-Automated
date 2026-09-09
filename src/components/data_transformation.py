@@ -93,3 +93,48 @@ class DataTransformation:
         except Exception as e:
             logger.error(f"Error during text transformation: {str(e)}")
             raise e
+
+    def prepare_for_model(self, df, target_column):
+        """
+        Prepares dataset for model training:
+        1. User selects target column (independent variable)
+        2. Creates combined_text column from all remaining non-numerical columns
+        3. Drops other columns, keeping only target and combined_text
+        
+        Args:
+            df: Input DataFrame
+            target_column: Column name to use as target/independent variable
+            
+        Returns:
+            DataFrame with target_column and combined_text columns
+        """
+        try:
+            logger.info(f"Preparing dataset for model. Target column: {target_column}")
+            
+            if target_column not in df.columns:
+                raise ValueError(f"Target column '{target_column}' not found in dataset")
+            
+            # Get numerical columns to exclude
+            numerical_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+            
+            # Get text columns (all columns except target and numerical)
+            text_cols = [col for col in df.columns if col != target_column and col not in numerical_cols]
+            
+            logger.info(f"Text columns to combine: {text_cols}")
+            logger.info(f"Numerical columns (will be dropped): {numerical_cols}")
+            
+            # Create combined text column
+            df_result = df.copy()
+            df_result['combined_text'] = df_result[text_cols].apply(
+                lambda row: ' '.join(row.dropna().astype(str)), axis=1
+            )
+            
+            # Keep only target and combined_text
+            df_result = df_result[[target_column, 'combined_text']]
+            
+            logger.info(f"Dataset prepared. Final shape: {df_result.shape}")
+            return df_result
+            
+        except Exception as e:
+            logger.error(f"Error preparing dataset for model: {str(e)}")
+            raise e
