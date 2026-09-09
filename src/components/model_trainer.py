@@ -1,5 +1,3 @@
-import pandas as pd
-import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
@@ -36,27 +34,8 @@ class ModelTrainer:
             X = df[text_col]
             y = df[target_col]
 
-            # Validate target column is suitable for classification
-            if y.dtype == 'object':
-                class_counts = y.value_counts()
-                min_class_count = class_counts.min()
-                num_classes = len(class_counts)
-                if num_classes > 20:
-                    raise ValueError(
-                        f"Target column '{target_col}' has {num_classes} unique classes, "
-                        f"which is too many for classification. Please select a categorical "
-                        f"label column (e.g. genre, sentiment, rating) with fewer classes."
-                    )
-                if min_class_count < 2:
-                    raise ValueError(
-                        f"Target column '{target_col}' has classes with only {min_class_count} sample(s). "
-                        f"Each class needs at least 2 samples. Please select a categorical label "
-                        f"column (e.g. genre, sentiment, rating) instead of a unique identifier "
-                        f"like an ID or title."
-                    )
-
             self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
-                X, y, test_size=test_size, random_state=random_state, stratify=y
+                X, y, test_size=test_size, random_state=random_state
             )
 
             logger.info(f"Train size: {len(self.X_train)}, Test size: {len(self.X_test)}")

@@ -136,13 +136,6 @@ if uploaded_file is not None:
                     if target_model_col:
                         class_counts = model_df[target_model_col].value_counts()
                         st.write(f"**Class distribution for '{target_model_col}':** {len(class_counts)} classes")
-                        if len(class_counts) > 20:
-                            st.warning(f"⚠️ '{target_model_col}' has {len(class_counts)} unique classes. "
-                                       f"Naive Bayes works best with <20 classes. Pick a categorical label "
-                                       f"column (genre, sentiment, rating) instead of an ID/title.")
-                        elif class_counts.min() < 2:
-                            st.warning(f"⚠️ Some classes have only {class_counts.min()} sample(s). "
-                                       f"Each class needs at least 2 samples for train/test split.")
                         st.dataframe(class_counts.reset_index().rename(
                             columns={"index": target_model_col, target_model_col: "Count"}
                         ).head(10))

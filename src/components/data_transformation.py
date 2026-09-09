@@ -1,4 +1,3 @@
-import pandas as pd
 import re
 import string
 import nltk
@@ -7,10 +6,10 @@ from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
 from src.utils.logger import get_logger
 
-# Initialize logger
+
 logger = get_logger()
 
-# Download necessary NLTK resources
+# Download NLTK resources
 nltk.download('stopwords', quiet=True)
 nltk.download('punkt', quiet=True)
 nltk.download('punkt_tab', quiet=True)
@@ -31,28 +30,22 @@ class DataTransformation:
 
         # 1. Lowercase
         text = text.lower()
-
         # Mark URLs, symbols, and digits instead of deleting
         text = re.sub(r'https?://\S+|www\.\S+', 'URL_TOKEN', text)
         text = re.sub(r'[^\w\s]', 'SYM_TOKEN', text)
         text = re.sub(r'\d+', 'NUM_TOKEN', text)
-
         # 2. Remove URLs
         text = re.sub(r'https?://\S+|www\.\S+', '', text)
-
         # 3. Remove special quotes and HTML tags
         text = re.sub(r"[''""«»]", "", text)
         text = re.sub(r'<.*?>', '', text)
-
         # 4. Remove digits
         text = re.sub(r'\d+', '', text)
-
         # 5. Remove punctuation
         text = text.translate(str.maketrans('', '', string.punctuation))
 
         # 6. Tokenize
         words = word_tokenize(text)
-
         # 7. Remove stopwords & Stemming
         words = [stem.stem(word) for word in words if word not in stop_words]
 
@@ -132,7 +125,6 @@ class DataTransformation:
             
             logger.info(f"Text columns to combine: {text_columns}")
             
-            # Create combined text column
             df_result = df.copy()
             df_result['combined_text'] = df_result[text_columns].apply(
                 lambda row: ' '.join(row.dropna().astype(str)), axis=1
