@@ -3,6 +3,8 @@ import pandas as pd
 from src.components.data_ingestion import DataIngestion
 from src.components.data_transformation import DataTransformation
 from src.components.eda import EDAComponent
+from src.components.model_trainer import ModelTrainer
+from src.pipeline.predict_pipeline import PredictPipeline
 from src.utils.logger import get_logger
 
 # Initialize logger
@@ -20,9 +22,10 @@ This app automates the first step of an NLP pipeline:
 ingestion = DataIngestion()
 transformation = DataTransformation()
 eda = EDAComponent()
+trainer = ModelTrainer()
 
 # File upload
-uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=["csv", "xls", "xlsx"])
 
 if uploaded_file is not None:
     try:
@@ -98,15 +101,120 @@ if uploaded_file is not None:
                 
                 target_col = st.selectbox("Select target/independent column", processed_df.columns)
                 
+                # Columns available for combining (exclude target)
+                combine_options = [col for col in processed_df.columns if col != target_col]
+                combine_cols = st.multiselect(
+                    "Select columns to combine into text",
+                    combine_options,
+                    default=combine_options,
+                    help="Selected columns will be combined into a single 'combined_text' column. All other columns will be dropped."
+                )
+                
                 if st.button("Prepare for Model"):
-                    with st.spinner("Preparing dataset..."):
-                        model_df = transformation.prepare_for_model(processed_df, target_col)
-                        st.session_state['model_df'] = model_df
-                        st.success("Dataset prepared for model training!")
-                        st.write("### Model-Ready Dataset Preview")
-                        st.dataframe(model_df.head())
-                        st.write(f"**Shape:** {model_df.shape}")
-                        st.write(f"**Columns:** {model_df.columns.tolist()}")
+                    if not combine_cols:
+                        st.warning("Please select at least one column to combine.")
+                    else:
+                        with st.spinner("Preparing dataset..."):
+                            model_df = transformation.prepare_for_model(processed_df, target_col, combine_cols)
+                            st.session_state['model_df'] = model_df
+                            st.success("Dataset prepared for model training!")
+                            st.write("### Model-Ready Dataset Preview")
+                            st.dataframe(model_df.head())
+                            st.write(f"**Shape:** {model_df.shape}")
+                            st.write(f"**Columns:** {model_df.columns.tolist()}")
+
+                # Step 5: Train Model
+                if 'model_df' in st.session_state:
+                    st.write("---")
+                    st.write("### 🤖 Train Model (TF-IDF + Naive Bayes)")
+
+                    model_df = st.session_state['model_df']
+                    text_col = st.selectbox("Select text column", model_df.columns, key="text_col")
+                    target_model_col = st.selectbox("Select target column", model_df.columns, key="target_model_col")
+
+                    # Show class distribution for the selected target
+                    if target_model_col:
+                        class_counts = model_df[target_model_col].value_counts()
+                        st.write(f"**Class distribution for '{target_model_col}':** {len(class_counts)} classes")
+                        if len(class_counts) > 20:
+                            st.warning(f"⚠️ '{target_model_col}' has {len(class_counts)} unique classes. "
+                                       f"Naive Bayes works best with <20 classes. Pick a categorical label "
+                                       f"column (genre, sentiment, rating) instead of an ID/title.")
+                        elif class_counts.min() < 2:
+                            st.warning(f"⚠️ Some classes have only {class_counts.min()} sample(s). "
+                                       f"Each class needs at least 2 samples for train/test split.")
+                        st.dataframe(class_counts.reset_index().rename(
+                            columns={"index": target_model_col, target_model_col: "Count"}
+                        ).head(10))
+
+                    if st.button("Train Model"):
+                        if text_col == target_model_col:
+                            st.error("Text column and target column cannot be the same!")
+                        else:
+                            with st.spinner("Training model..."):
+                                # Split data
+                                X_train, X_test, y_train, y_test = trainer.split_data(
+                                    model_df, text_col, target_model_col, test_size=0.3
+                                )
+
+                                # Train model
+                                pipeline = trainer.train_model()
+
+                                # Get metrics
+                                metrics = trainer.get_metrics()
+                                st.session_state['metrics'] = metrics
+                                st.session_state['pipeline'] = pipeline
+                                st.session_state['trainer'] = trainer
+
+                                st.success("Model trained successfully!")
+
+                    # Display metrics
+                    if 'metrics' in st.session_state:
+                        metrics = st.session_state['metrics']
+
+                        st.write("---")
+                        st.write("### 📊 Model Metrics")
+
+                        # Metrics in columns
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Accuracy", f"{metrics['accuracy']}%")
+                        with col2:
+                            st.metric("Precision", f"{metrics['precision']}%")
+                        with col3:
+                            st.metric("Recall", f"{metrics['recall']}%")
+                        with col4:
+                            st.metric("F1 Score", f"{metrics['f1_score']}%")
+
+                        # Train/Test split info
+                        st.info(f"**Train Size:** {metrics['train_size']} | **Test Size:** {metrics['test_size']} (70/30 split)")
+
+                        # Confusion Matrix
+                        st.write("#### Confusion Matrix")
+                        cm_df = pd.DataFrame(
+                            metrics['confusion_matrix'],
+                            index=[f"Actual {i}" for i in range(len(metrics['confusion_matrix']))],
+                            columns=[f"Predicted {i}" for i in range(len(metrics['confusion_matrix'][0]))]
+                        )
+                        st.dataframe(cm_df)
+
+                        # Classification Report
+                        st.write("#### Classification Report")
+                        st.code(metrics['classification_report'])
+
+                        # Prediction Section
+                        st.write("---")
+                        st.write("### 🔮 Test Prediction")
+
+                        predict_pipeline = PredictPipeline(st.session_state['pipeline'])
+                        user_input = st.text_area("Enter text to predict:")
+
+                        if st.button("Predict"):
+                            if user_input.strip():
+                                prediction = predict_pipeline.predict(user_input)
+                                st.success(f"**Prediction:** {prediction}")
+                            else:
+                                st.warning("Please enter some text to predict.")
 
         # Final Export
         if 'processed_df' in st.session_state:

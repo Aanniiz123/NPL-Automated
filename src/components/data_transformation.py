@@ -32,20 +32,22 @@ class DataTransformation:
         # 1. Lowercase
         text = text.lower()
 
-        # Mark URLs, symbols, and digits instead of deleting (as requested)
+        # Mark URLs, symbols, and digits instead of deleting
         text = re.sub(r'https?://\S+|www\.\S+', 'URL_TOKEN', text)
         text = re.sub(r'[^\w\s]', 'SYM_TOKEN', text)
         text = re.sub(r'\d+', 'NUM_TOKEN', text)
 
-        # Note: The user provided redundant removal steps in their prompt.
-        # Since they specifically mentioned "Mark URLs instead of deleting",
-        # I'm omitting the subsequent re.sub calls that would delete them.
+        # 2. Remove URLs
+        text = re.sub(r'https?://\S+|www\.\S+', '', text)
 
-        # 3. Remove special quotes and HTML tags (Still useful for cleanup)
-        text = re.sub(r"[‘’“”«»]", "", text)
+        # 3. Remove special quotes and HTML tags
+        text = re.sub(r"[''""«»]", "", text)
         text = re.sub(r'<.*?>', '', text)
 
-        # 5. Remove remaining punctuation (if any left after SYM_TOKEN)
+        # 4. Remove digits
+        text = re.sub(r'\d+', '', text)
+
+        # 5. Remove punctuation
         text = text.translate(str.maketrans('', '', string.punctuation))
 
         # 6. Tokenize
@@ -94,16 +96,18 @@ class DataTransformation:
             logger.error(f"Error during text transformation: {str(e)}")
             raise e
 
-    def prepare_for_model(self, df, target_column):
+    def prepare_for_model(self, df, target_column, text_columns=None):
         """
         Prepares dataset for model training:
         1. User selects target column (independent variable)
-        2. Creates combined_text column from all remaining non-numerical columns
+        2. Creates combined_text column from user-selected columns
         3. Drops other columns, keeping only target and combined_text
         
         Args:
             df: Input DataFrame
             target_column: Column name to use as target/independent variable
+            text_columns: List of columns to combine into combined_text.
+                         If None, uses all non-numerical columns except target.
             
         Returns:
             DataFrame with target_column and combined_text columns
@@ -114,18 +118,23 @@ class DataTransformation:
             if target_column not in df.columns:
                 raise ValueError(f"Target column '{target_column}' not found in dataset")
             
-            # Get numerical columns to exclude
-            numerical_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+            # If no text columns specified, use all non-numerical columns except target
+            if text_columns is None:
+                numerical_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+                text_columns = [col for col in df.columns if col != target_column and col not in numerical_cols]
+            else:
+                # Validate selected columns
+                for col in text_columns:
+                    if col not in df.columns:
+                        raise ValueError(f"Column '{col}' not found in dataset")
+                    if col == target_column:
+                        raise ValueError(f"Column '{col}' cannot be both target and text column")
             
-            # Get text columns (all columns except target and numerical)
-            text_cols = [col for col in df.columns if col != target_column and col not in numerical_cols]
-            
-            logger.info(f"Text columns to combine: {text_cols}")
-            logger.info(f"Numerical columns (will be dropped): {numerical_cols}")
+            logger.info(f"Text columns to combine: {text_columns}")
             
             # Create combined text column
             df_result = df.copy()
-            df_result['combined_text'] = df_result[text_cols].apply(
+            df_result['combined_text'] = df_result[text_columns].apply(
                 lambda row: ' '.join(row.dropna().astype(str)), axis=1
             )
             
